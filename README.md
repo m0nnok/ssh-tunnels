@@ -86,6 +86,15 @@ src/SshTunneler/
 tests/SshTunneler.Tests/  33 теста, включая интеграционные
 ```
 
+## Установка
+
+Готовый установщик — на странице релизов:
+[SshTunneler-1.0.0-win-x64.msi](https://github.com/m0nnok/ssh-tunnels/releases).
+Установка идёт от имени пользователя, без прав администратора и без UAC:
+приложение попадает в `%LOCALAPPDATA%\Programs\SshTunneler`, ярлык — в меню «Пуск».
+Сборка self-contained, .NET на машине не нужен. Удаление — как у обычной программы,
+конфигурация в `%APPDATA%\SshTunneler` при этом сохраняется.
+
 ## Сборка и запуск
 
 ```bash
@@ -101,6 +110,14 @@ dotnet test SshTunneler.slnx
 
 Аргументы командной строки: `--minimized` (стартовать в трее),
 `--askpass` (служебный режим для ssh.exe, вручную не нужен).
+
+Собрать установщик (нужен WiX 5: `dotnet tool install --global wix --version 5.0.2`):
+
+```bash
+powershell -ExecutionPolicy Bypass -File installer/build-msi.ps1 -Version 1.0.0
+```
+
+MSI появится в `artifacts/`.
 
 ## Тесты
 

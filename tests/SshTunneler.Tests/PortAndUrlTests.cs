@@ -93,3 +93,17 @@ public class SshMessagesTests
         Assert.Equal("something entirely new", SshMessages.Humanize("  something entirely new  "));
     }
 }
+
+public class AutoStartServiceTests
+{
+    [Fact]
+    public void ExpectedValue_PointsAtTheRunningExecutableAndStartsHidden()
+    {
+        var value = AutoStartService.ExpectedValue();
+
+        Assert.NotNull(value);
+        Assert.EndsWith("--minimized", value);
+        Assert.StartsWith("\"", value);
+        Assert.Contains(Environment.ProcessPath!, value);
+    }
+}

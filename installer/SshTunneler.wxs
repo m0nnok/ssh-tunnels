@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Per-user MSI: installs into %LOCALAPPDATA%\Programs\SshTunneler, so no admin rights
+  and no UAC prompt are needed. The payload is a self-contained build, so the target
+  machine does not need the .NET runtime.
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+
+  <Package Name="SSH Tunneler"
+           Manufacturer="Ivan Kharchenko"
+           Version="$(var.Version)"
+           UpgradeCode="3bbdb90f-6038-4590-b530-aa153ee9ff5c"
+           Scope="perUser"
+           Compressed="yes">
+
+    <SummaryInformation Description="SSH Tunneler — быстрый подъём SSH-туннелей" />
+
+    <MajorUpgrade AllowSameVersionUpgrades="yes"
+                  DowngradeErrorMessage="Уже установлена более новая версия SSH Tunneler." />
+
+    <MediaTemplate EmbedCab="yes" />
+
+    <Property Id="ARPPRODUCTICON" Value="AppIcon" />
+    <Property Id="ARPURLINFOABOUT" Value="https://github.com/m0nnok/ssh-tunnels" />
+    <Icon Id="AppIcon" SourceFile="$(var.PublishDir)\SshTunneler.exe" />
+
+    <StandardDirectory Id="LocalAppDataFolder">
+      <Directory Id="ProgramsFolder" Name="Programs">
+        <Directory Id="INSTALLFOLDER" Name="SshTunneler" />
+      </Directory>
+    </StandardDirectory>
+
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Directory Id="ShortcutFolder" Name="SSH Tunneler" />
+    </StandardDirectory>
+
+    <Feature Id="Main" Title="SSH Tunneler" Level="1">
+      <ComponentGroupRef Id="ApplicationFiles" />
+      <ComponentRef Id="StartMenuShortcut" />
+    </Feature>
+
+    <ComponentGroup Id="ApplicationFiles" Directory="INSTALLFOLDER">
+      <Files Include="$(var.PublishDir)\**" />
+    </ComponentGroup>
+
+    <Component Id="StartMenuShortcut" Directory="ShortcutFolder" Guid="612534a7-8132-4cff-a0ad-e1fe488a6ac7">
+      <Shortcut Id="AppShortcut"
+                Name="SSH Tunneler"
+                Description="Быстрый подъём SSH-туннелей к ресурсам на 127.0.0.1"
+                Target="[INSTALLFOLDER]SshTunneler.exe"
+                WorkingDirectory="INSTALLFOLDER" />
+      <RemoveFolder Id="RemoveShortcutFolder" On="uninstall" />
+      <RegistryValue Root="HKCU" Key="Software\SshTunneler" Name="Installed"
+                     Type="integer" Value="1" KeyPath="yes" />
+    </Component>
+
+  </Package>
+</Wix>
