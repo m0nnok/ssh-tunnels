@@ -98,6 +98,53 @@ public class ConfigStoreTests : IDisposable
         Assert.Single(new DpapiJsonConfigStore(ConfigPath).Load().Servers);
     }
 
+    [Fact]
+    public void Load_WhenMainFileIsMissing_FallsBackToThePreviousSave()
+    {
+        var store = new DpapiJsonConfigStore(ConfigPath);
+        var config = new AppConfig();
+        config.Servers.Add(new SshServer { Name = "prod", Host = "10.0.0.5" });
+        store.Save(config);
+        config.Servers.Add(new SshServer { Name = "staging", Host = "10.0.0.6" });
+        store.Save(config);
+
+        File.Delete(ConfigPath);
+
+        // The backup trails the current file by one save, so this is the state before "staging".
+        Assert.Equal("prod", new DpapiJsonConfigStore(ConfigPath).Load().Servers.Single().Name);
+    }
+
+    [Fact]
+    public void Load_WhenMainFileIsUnreadable_RecoversFromBackupAndQuarantinesIt()
+    {
+        var store = new DpapiJsonConfigStore(ConfigPath);
+        var config = new AppConfig();
+        config.Servers.Add(new SshServer { Name = "prod", Host = "10.0.0.5" });
+        store.Save(config);
+        store.Save(config); // second save produces the .bak copy
+
+        File.WriteAllText(ConfigPath, "this is not a DPAPI blob");
+
+        Assert.Equal("prod", new DpapiJsonConfigStore(ConfigPath).Load().Servers.Single().Name);
+        Assert.False(File.Exists(ConfigPath));
+        Assert.Single(Directory.GetFiles(_directory, "config.dat.corrupt-*"));
+    }
+
+    [Fact]
+    public void Constructor_RejectsARelativePath()
+    {
+        // A relative path resolves against the working directory, which for anything started from
+        // the Run key is C:\Windows\System32 — the saved settings would look wiped.
+        Assert.Throws<ArgumentException>(() => new DpapiJsonConfigStore(@"SshTunneler\config.dat"));
+    }
+
+    [Fact]
+    public void DefaultPath_IsAbsolute()
+    {
+        Assert.True(Path.IsPathFullyQualified(DpapiJsonConfigStore.RoamingAppDataDirectory()));
+        Assert.True(Path.IsPathFullyQualified(DpapiJsonConfigStore.DefaultPath));
+    }
+
     public void Dispose()
     {
         try

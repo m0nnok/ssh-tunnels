@@ -95,7 +95,8 @@ public sealed class App : Application
                 : $"{ex.Message}{Environment.NewLine}{Environment.NewLine}Старый файл сохранён как:{Environment.NewLine}{ex.QuarantinedPath}";
 
             MessageBox.Show(
-                $"{details}{Environment.NewLine}{Environment.NewLine}Приложение продолжит работу с пустой конфигурацией.",
+                $"{details}{Environment.NewLine}{Environment.NewLine}Файл настроек:{Environment.NewLine}{store.Path}" +
+                $"{Environment.NewLine}{Environment.NewLine}Приложение продолжит работу с пустой конфигурацией.",
                 "SSH Tunneler",
                 MessageBoxButton.OK,
                 MessageBoxImage.Warning);
