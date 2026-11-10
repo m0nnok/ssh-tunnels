@@ -1,5 +1,10 @@
-using System.Drawing;
-using System.Windows.Forms;
+using Avalonia;
+using Avalonia.Controls;
+using Avalonia.Controls.ApplicationLifetimes;
+using Avalonia.Layout;
+using Avalonia.Markup.Xaml.Styling;
+using Avalonia.Styling;
+using Avalonia.Themes.Fluent;
 
 namespace SshTunneler.Services;
 
@@ -7,52 +12,83 @@ namespace SshTunneler.Services;
 /// Fallback prompt shown by the askpass helper when the app has no stored secret,
 /// which also covers one-time codes and host key confirmations.
 /// </summary>
-internal static class AskPassPromptWindow
+internal sealed class AskPassPromptWindow : Window
 {
-    public static string? Ask(string prompt, string? label)
+    private readonly TextBox _input;
+
+    private AskPassPromptWindow(string prompt, string? label)
     {
-        System.Windows.Forms.Application.EnableVisualStyles();
-        System.Windows.Forms.Application.SetHighDpiMode(HighDpiMode.SystemAware);
-
-        using var form = new Form
-        {
-            Text = string.IsNullOrWhiteSpace(label) ? "SSH Tunneler" : $"SSH Tunneler — {label}",
-            FormBorderStyle = FormBorderStyle.FixedDialog,
-            StartPosition = FormStartPosition.CenterScreen,
-            MinimizeBox = false,
-            MaximizeBox = false,
-            ShowInTaskbar = true,
-            TopMost = true,
-            ClientSize = new Size(420, 132),
-            BackColor = Color.FromArgb(28, 28, 32),
-            ForeColor = Color.Gainsboro
-        };
-
-        var promptLabel = new Label
-        {
-            Text = prompt,
-            AutoSize = false,
-            Bounds = new Rectangle(14, 12, 392, 40)
-        };
+        Title = string.IsNullOrWhiteSpace(label) ? "SSH Tunneler" : $"SSH Tunneler — {label}";
+        Width = 420;
+        SizeToContent = SizeToContent.Height;
+        CanResize = false;
+        Topmost = true;
+        WindowStartupLocation = WindowStartupLocation.CenterScreen;
 
         var isYesNo = prompt.Contains("yes/no", StringComparison.OrdinalIgnoreCase);
-        var input = new TextBox
+        _input = new TextBox { PasswordChar = isYesNo ? default : '●', Margin = new Thickness(0, 0, 0, 10) };
+
+        var ok = new Button { Content = "OK", IsDefault = true, Classes = { "dialog" } };
+        var cancel = new Button { Content = "Отмена", IsCancel = true, Classes = { "dialog" } };
+        ok.Click += (_, _) => { Result = _input.Text ?? ""; Close(); };
+        cancel.Click += (_, _) => Close();
+
+        Content = new StackPanel
         {
-            Bounds = new Rectangle(14, 58, 392, 26),
-            UseSystemPasswordChar = !isYesNo,
-            BackColor = Color.FromArgb(40, 40, 46),
-            ForeColor = Color.Gainsboro,
-            BorderStyle = BorderStyle.FixedSingle
+            Margin = new Thickness(14, 12),
+            Children =
+            {
+                new TextBlock { Text = prompt, TextWrapping = Avalonia.Media.TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 8) },
+                _input,
+                new StackPanel
+                {
+                    Orientation = Orientation.Horizontal,
+                    HorizontalAlignment = HorizontalAlignment.Right,
+                    Children = { ok, cancel }
+                }
+            }
         };
 
-        var ok = new Button { Text = "OK", DialogResult = DialogResult.OK, Bounds = new Rectangle(240, 94, 80, 26) };
-        var cancel = new Button { Text = "Отмена", DialogResult = DialogResult.Cancel, Bounds = new Rectangle(326, 94, 80, 26) };
+        // The helper runs as a background app, so the window has to pull itself to the front.
+        Opened += (_, _) => { Activate(); _input.Focus(); };
+    }
 
-        form.Controls.AddRange([promptLabel, input, ok, cancel]);
-        form.AcceptButton = ok;
-        form.CancelButton = cancel;
-        form.Shown += (_, _) => { form.Activate(); input.Focus(); };
+    /// <summary>What the user typed, or null when the prompt was cancelled or closed.</summary>
+    public string? Result { get; private set; }
 
-        return form.ShowDialog() == DialogResult.OK ? input.Text : null;
+    public static string? Ask(string prompt, string? label)
+    {
+        var app = new PromptApp(prompt, label);
+        Program.ConfigurePlatform(AppBuilder.Configure(() => app))
+            .StartWithClassicDesktopLifetime([], ShutdownMode.OnMainWindowClose);
+        return app.Result;
+    }
+
+    /// <summary>A bare application for the helper process: theme plus the single prompt window.</summary>
+    private sealed class PromptApp(string prompt, string? label) : Application
+    {
+        public string? Result { get; private set; }
+
+        public override void Initialize()
+        {
+            RequestedThemeVariant = ThemeVariant.Dark;
+            Styles.Add(new FluentTheme());
+            Styles.Add(new StyleInclude(new Uri("avares://SshTunneler/"))
+            {
+                Source = new Uri("avares://SshTunneler/Themes/Dark.axaml")
+            });
+        }
+
+        public override void OnFrameworkInitializationCompleted()
+        {
+            if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
+            {
+                var window = new AskPassPromptWindow(prompt, label);
+                window.Closed += (_, _) => Result = window.Result;
+                desktop.MainWindow = window;
+            }
+
+            base.OnFrameworkInitializationCompleted();
+        }
     }
 }

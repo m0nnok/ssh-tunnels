@@ -2,7 +2,7 @@ using System.Diagnostics;
 
 namespace SshTunneler.Services;
 
-/// <summary>One ssh.exe port-forward process plus a rolling buffer of its diagnostic output.</summary>
+/// <summary>One ssh port-forward process plus a rolling buffer of its diagnostic output.</summary>
 public sealed class SshTunnelProcess : IDisposable
 {
     private const int MaxLogLines = 500;

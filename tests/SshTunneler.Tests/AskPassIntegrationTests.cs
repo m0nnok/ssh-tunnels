@@ -7,15 +7,15 @@ namespace SshTunneler.Tests;
 
 /// <summary>
 /// Covers the askpass chain end to end: the app hands a secret to its own --askpass mode
-/// over a named pipe, and Windows OpenSSH really does call SSH_ASKPASS the way we rely on.
+/// over a named pipe, and the system OpenSSH really does call SSH_ASKPASS the way we rely on.
 /// </summary>
 public class AskPassIntegrationTests : IDisposable
 {
     private readonly string _directory =
         Path.Combine(Path.GetTempPath(), "SshTunnelerTests", Guid.NewGuid().ToString("N"));
 
-    private static string AppExe =>
-        Path.Combine(AppContext.BaseDirectory, "SshTunneler.exe");
+    private static string AppExe => Path.Combine(
+        AppContext.BaseDirectory, OperatingSystem.IsWindows() ? "SshTunneler.exe" : "SshTunneler");
 
     [Fact]
     public void AskPassMode_PrintsTheSecretHandedOverThePipe()
@@ -37,7 +37,7 @@ public class AskPassIntegrationTests : IDisposable
     [Fact]
     public void AskPassMode_IsAlsoSelectedByEnvironmentAlone()
     {
-        // ssh.exe passes only the prompt, so the helper must recognise itself by the environment.
+        // ssh passes only the prompt, so the helper must recognise itself by the environment.
         using var server = new AskPassServer();
         var token = server.Register(_ => "from-env");
 
@@ -55,8 +55,9 @@ public class AskPassIntegrationTests : IDisposable
     [Fact]
     public void OpenSshReallyCallsTheHelper_WhenItNeedsAKeyPassphrase()
     {
-        var sshKeygen = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.System), "OpenSSH", "ssh-keygen.exe");
+        var sshKeygen = OperatingSystem.IsWindows()
+            ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "OpenSSH", "ssh-keygen.exe")
+            : "/usr/bin/ssh-keygen";
         if (!File.Exists(sshKeygen)) return;
 
         Directory.CreateDirectory(_directory);
@@ -69,16 +70,13 @@ public class AskPassIntegrationTests : IDisposable
         using var server = new AskPassServer();
         var token = server.Register(_ => "pass-phrase-42");
 
+        // The same environment the app gives ssh, pointed at the app instead of the test host.
+        var environment = AskPassProtocol.BuildSshEnvironment(server.PipeName, token, "test");
+        environment["SSH_ASKPASS"] = AppExe;
+        environment[AskPassClient.NoDialogEnvVar] = "1";
+
         // ssh-keygen -y needs the passphrase and, with SSH_ASKPASS_REQUIRE=force, must ask the helper.
-        var result = Run(sshKeygen, ["-y", "-f", keyPath], new Dictionary<string, string>
-        {
-            ["SSH_ASKPASS"] = AppExe,
-            ["SSH_ASKPASS_REQUIRE"] = "force",
-            ["DISPLAY"] = "localhost:0",
-            [AskPassProtocol.PipeEnvVar] = server.PipeName,
-            [AskPassProtocol.TokenEnvVar] = token,
-            [AskPassClient.NoDialogEnvVar] = "1"
-        });
+        var result = Run(sshKeygen, ["-y", "-f", keyPath], environment);
 
         Assert.True(result.ExitCode == 0, $"exit={result.ExitCode} stderr={result.StandardError}");
         Assert.StartsWith("ssh-ed25519", result.StandardOutput.Trim());

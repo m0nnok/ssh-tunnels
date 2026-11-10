@@ -1,5 +1,8 @@
+using System.IO;
 using System.Net;
 using System.Net.Sockets;
+using System.Xml;
+using System.Xml.Linq;
 using SshTunneler.Models;
 using SshTunneler.Services;
 using Xunit;
@@ -105,5 +108,32 @@ public class AutoStartServiceTests
         Assert.EndsWith("--minimized", value);
         Assert.StartsWith("\"", value);
         Assert.Contains(Environment.ProcessPath!, value);
+    }
+
+    [Fact]
+    public void LaunchAgentPlist_StartsTheExecutableHiddenAtLogin()
+    {
+        const string exe = "/Users/a&b/Apps/SshTunneler.app/Contents/MacOS/SshTunneler";
+
+        var plist = AutoStartService.BuildLaunchAgentPlist(exe);
+
+        using var reader = XmlReader.Create(new StringReader(plist), new XmlReaderSettings { DtdProcessing = DtdProcessing.Ignore });
+        var entries = XDocument.Load(reader).Root!.Element("dict")!.Elements().ToList();
+        XElement ValueOf(string key) => entries[entries.FindIndex(e => e.Name == "key" && e.Value == key) + 1];
+
+        Assert.Equal(AutoStartService.LaunchAgentLabel, ValueOf("Label").Value);
+        Assert.Equal([exe, "--minimized"], ValueOf("ProgramArguments").Elements("string").Select(e => e.Value));
+        Assert.Equal("true", ValueOf("RunAtLoad").Name.LocalName);
+    }
+
+    [Theory]
+    [InlineData("/Volumes/SSH Tunneler/SshTunneler.app/Contents/MacOS/SshTunneler", true)]
+    [InlineData("/private/var/folders/xy/abc/T/AppTranslocation/1234/d/SshTunneler.app/Contents/MacOS/SshTunneler", true)]
+    [InlineData("/Applications/SshTunneler.app/Contents/MacOS/SshTunneler", false)]
+    public void TransientLocations_AreNotWorthAnAutostartEntry(string exe, bool transient)
+    {
+        // A copy run from the mounted disk image or translocated after download is gone after
+        // eject or restart, so a LaunchAgent pointing at it would start nothing.
+        Assert.Equal(transient, AutoStartService.IsTransientLocation(exe));
     }
 }

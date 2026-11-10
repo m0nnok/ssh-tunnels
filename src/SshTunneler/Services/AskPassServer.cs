@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.IO;
 using System.IO.Pipes;
+using System.Runtime.Versioning;
 using System.Security.Principal;
 using System.Text;
 using System.Text.Json;
@@ -9,7 +10,7 @@ namespace SshTunneler.Services;
 
 /// <summary>
 /// Serves secrets to askpass helpers over a private named pipe. Each tunnel gets its own
-/// unguessable token, and only processes of the current Windows user are served.
+/// unguessable token, and only processes of the current user are served.
 /// </summary>
 public sealed class AskPassServer : IDisposable
 {
@@ -19,8 +20,9 @@ public sealed class AskPassServer : IDisposable
 
     public AskPassServer()
     {
-        PipeName = "SshTunneler." + Guid.NewGuid().ToString("N");
-        using (var identity = WindowsIdentity.GetCurrent()) _ownerSid = identity.User;
+        PipeName = AskPassProtocol.NewPipeName();
+        if (OperatingSystem.IsWindows()) _ownerSid = CurrentUserSid();
+
         _ = Task.Run(AcceptLoopAsync);
     }
 
@@ -43,12 +45,14 @@ public sealed class AskPassServer : IDisposable
             NamedPipeServerStream? pipe = null;
             try
             {
+                // CurrentUserOnly limits the pipe ACL to this user on Windows; on Unix the server
+                // compares the peer's uid and refuses anyone else.
                 pipe = new NamedPipeServerStream(
                     PipeName,
                     PipeDirection.InOut,
                     NamedPipeServerStream.MaxAllowedServerInstances,
                     PipeTransmissionMode.Byte,
-                    PipeOptions.Asynchronous);
+                    PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
 
                 await pipe.WaitForConnectionAsync(_cts.Token);
                 var accepted = pipe;
@@ -74,7 +78,7 @@ public sealed class AskPassServer : IDisposable
         {
             using (pipe)
             {
-                if (!IsOwnerConnected(pipe)) return;
+                if (OperatingSystem.IsWindows() && !IsOwnerConnected(pipe)) return;
 
                 using var reader = new StreamReader(pipe, new UTF8Encoding(false), false, 1024, leaveOpen: true);
                 using var writer = new StreamWriter(pipe, new UTF8Encoding(false), leaveOpen: true) { AutoFlush = true };
@@ -89,7 +93,7 @@ public sealed class AskPassServer : IDisposable
 
                 var response = new AskPassProtocol.Response(!string.IsNullOrEmpty(secret), secret);
                 await writer.WriteLineAsync(JsonSerializer.Serialize(response));
-                pipe.WaitForPipeDrain();
+                if (OperatingSystem.IsWindows()) pipe.WaitForPipeDrain();
             }
         }
         catch (Exception)
@@ -100,8 +104,10 @@ public sealed class AskPassServer : IDisposable
 
     /// <summary>
     /// Compares the client by SID: display names come back in different shapes depending on
-    /// how the account is qualified, so only the SID is a reliable check.
+    /// how the account is qualified, so only the SID is a reliable check. On Unix the uid check
+    /// behind <see cref="PipeOptions.CurrentUserOnly"/> already does this job.
     /// </summary>
+    [SupportedOSPlatform("windows")]
     private bool IsOwnerConnected(NamedPipeServerStream pipe)
     {
         if (_ownerSid is null) return true;
@@ -109,11 +115,7 @@ public sealed class AskPassServer : IDisposable
         try
         {
             SecurityIdentifier? clientSid = null;
-            pipe.RunAsClient(() =>
-            {
-                using var identity = WindowsIdentity.GetCurrent();
-                clientSid = identity.User;
-            });
+            pipe.RunAsClient(() => clientSid = CurrentUserSid());
 
             return clientSid is null || _ownerSid.Equals(clientSid);
         }
@@ -122,6 +124,13 @@ public sealed class AskPassServer : IDisposable
             // Impersonation is unavailable: the random token stays as the only guard.
             return true;
         }
+    }
+
+    [SupportedOSPlatform("windows")]
+    private static SecurityIdentifier? CurrentUserSid()
+    {
+        using var identity = WindowsIdentity.GetCurrent();
+        return identity.User;
     }
 
     public void Dispose()

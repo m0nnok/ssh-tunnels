@@ -5,7 +5,7 @@ using SshTunneler.Models;
 namespace SshTunneler.Services;
 
 /// <summary>
-/// Owns every running tunnel: starts and stops ssh.exe, tracks state, reconnects after drops.
+/// Owns every running tunnel: starts and stops ssh, tracks state, reconnects after drops.
 /// Status changes are published on background threads, callers marshal them to the UI.
 /// </summary>
 public sealed class TunnelManager : IDisposable
@@ -90,11 +90,11 @@ public sealed class TunnelManager : IDisposable
                 process.Start(
                     _sshPath,
                     SshArgumentBuilder.BuildTunnelArgs(server, resource, port),
-                    BuildEnvironment(entry.AskPassToken!, server.ToString()));
+                    AskPassProtocol.BuildSshEnvironment(_askPass.PipeName, entry.AskPassToken!, server.ToString()));
             }
             catch (Exception ex)
             {
-                return Fail(entry, $"Не удалось запустить ssh.exe: {ex.Message}");
+                return Fail(entry, $"Не удалось запустить ssh: {ex.Message}");
             }
 
             if (!await WaitForListenerAsync(process, port))
@@ -146,17 +146,6 @@ public sealed class TunnelManager : IDisposable
             if (_config.FindResource(id) is null)
                 await DisconnectAsync(id);
     }
-
-    private Dictionary<string, string> BuildEnvironment(string token, string label) => new()
-    {
-        // ssh.exe cannot read secrets from stdin, so it asks this very executable instead.
-        ["SSH_ASKPASS"] = Environment.ProcessPath ?? "",
-        ["SSH_ASKPASS_REQUIRE"] = "force",
-        ["DISPLAY"] = "localhost:0",
-        [AskPassProtocol.PipeEnvVar] = _askPass.PipeName,
-        [AskPassProtocol.TokenEnvVar] = token,
-        [AskPassProtocol.LabelEnvVar] = label
-    };
 
     private int ResolveLocalPort(TunnelResource resource, out string? error)
     {

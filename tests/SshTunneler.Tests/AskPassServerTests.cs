@@ -44,6 +44,17 @@ public class AskPassServerTests
         Assert.False(Ask(server.PipeName, token, "password:").Found);
     }
 
+    [Fact]
+    public void PipeName_FitsTheUnixSocketPathLimit()
+    {
+        using var server = new AskPassServer();
+        if (OperatingSystem.IsWindows()) return;
+
+        // A domain socket path over 103 bytes makes the server constructor throw on macOS.
+        Assert.True(Path.IsPathRooted(server.PipeName));
+        Assert.True(Encoding.UTF8.GetByteCount(server.PipeName) <= AskPassProtocol.MaxSocketPathBytes);
+    }
+
     private static AskPassProtocol.Response Ask(string pipeName, string token, string prompt)
     {
         using var pipe = new NamedPipeClientStream(

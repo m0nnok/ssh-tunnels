@@ -6,7 +6,7 @@ using System.Text.Json;
 
 namespace SshTunneler.Services;
 
-/// <summary>The --askpass side of the app: fetch the secret and print it to stdout for ssh.exe.</summary>
+/// <summary>The --askpass side of the app: fetch the secret and print it to stdout for ssh.</summary>
 public static class AskPassClient
 {
     /// <summary>Set to 1 to fail instead of showing the interactive fallback, used by tests.</summary>
@@ -31,7 +31,7 @@ public static class AskPassClient
 
         if (secret is null) return 1;
 
-        // stdout here is the pipe ssh.exe created for the helper.
+        // stdout here is the pipe ssh created for the helper.
         using var stdout = Console.OpenStandardOutput();
         var bytes = Encoding.UTF8.GetBytes(secret + "\n");
         stdout.Write(bytes, 0, bytes.Length);
@@ -53,7 +53,7 @@ public static class AskPassClient
         try
         {
             using var pipe = new NamedPipeClientStream(
-                ".", pipeName, PipeDirection.InOut, PipeOptions.None, TokenImpersonationLevel.Impersonation);
+                ".", pipeName, PipeDirection.InOut, PipeOptions.CurrentUserOnly, TokenImpersonationLevel.Impersonation);
             pipe.Connect(3000);
 
             using var writer = new StreamWriter(pipe, new UTF8Encoding(false), leaveOpen: true) { AutoFlush = true };

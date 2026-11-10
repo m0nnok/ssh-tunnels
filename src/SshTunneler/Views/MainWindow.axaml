@@ -1,0 +1,112 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:SshTunneler.ViewModels"
+        xmlns:views="using:SshTunneler.Views"
+        x:Class="SshTunneler.Views.MainWindow"
+        x:DataType="vm:MainViewModel"
+        Title="SSH Tunneler"
+        WindowDecorations="None"
+        TransparencyLevelHint="Transparent"
+        Background="Transparent"
+        ShowInTaskbar="False"
+        MinWidth="280" MinHeight="160"
+        Opacity="{Binding Ui.Opacity}"
+        Topmost="{Binding Ui.Topmost}">
+
+    <Border Background="{StaticResource SurfaceBrush}"
+            BorderBrush="{StaticResource BorderBrushSoft}"
+            BorderThickness="1"
+            CornerRadius="10">
+        <Panel>
+            <Grid Margin="10,7,10,6" RowDefinitions="Auto,*,Auto,Auto">
+
+                <DockPanel Grid.Row="0" Margin="0,0,0,8" Background="Transparent"
+                           PointerPressed="OnHeaderPointerPressed">
+                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                        <Button Classes="chrome" Command="{Binding ToggleLogCommand}"
+                                Content="&#x2261;" ToolTip.Tip="Лог подключений" />
+                        <Button Classes="chrome" Command="{Binding OpenSettingsCommand}"
+                                Content="&#x2699;" ToolTip.Tip="Настройки" />
+                        <Button Classes="chrome" Command="{Binding HideCommand}"
+                                Content="&#x2715;" ToolTip.Tip="{x:Static views:PlatformText.HideTip}" />
+                    </StackPanel>
+                    <TextBlock Text="SSH Tunnels" FontSize="12" FontWeight="SemiBold"
+                               Foreground="{StaticResource TextDimBrush}" VerticalAlignment="Center" />
+                </DockPanel>
+
+                <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto"
+                              HorizontalScrollBarVisibility="Disabled">
+                    <Panel>
+                        <TextBlock Text="Ресурсов пока нет. Откройте настройки и добавьте сервер и ресурс."
+                                   TextWrapping="Wrap" Foreground="{StaticResource TextDimBrush}" FontSize="11"
+                                   Margin="2,6,2,0" IsVisible="{Binding !HasResources}" />
+
+                        <ItemsControl ItemsSource="{Binding Items}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <WrapPanel Orientation="Horizontal" />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:ResourceItemViewModel">
+                                    <Button Classes="tunnel"
+                                            Command="{Binding ToggleCommand}"
+                                            ToolTip.Tip="{Binding ToolTipText}">
+                                        <Button.ContextMenu>
+                                            <ContextMenu>
+                                                <MenuItem Header="Открыть в браузере" Command="{Binding OpenBrowserCommand}" />
+                                                <MenuItem Header="Копировать URL" Command="{Binding CopyUrlCommand}" />
+                                                <Separator />
+                                                <MenuItem Header="Переподключить" Command="{Binding ReconnectCommand}" />
+                                                <MenuItem Header="Отключить" Command="{Binding DisconnectCommand}" />
+                                                <Separator />
+                                                <MenuItem Header="Показать лог" Command="{Binding ShowLogCommand}" />
+                                                <MenuItem Header="Изменить..." Command="{Binding EditCommand}" />
+                                            </ContextMenu>
+                                        </Button.ContextMenu>
+                                        <StackPanel>
+                                            <DockPanel>
+                                                <Ellipse Width="8" Height="8" Margin="0,0,7,0"
+                                                         VerticalAlignment="Center"
+                                                         Fill="{Binding StatusBrush}" />
+                                                <TextBlock Text="{Binding Name}" FontSize="12"
+                                                           TextTrimming="CharacterEllipsis" />
+                                            </DockPanel>
+                                            <TextBlock Text="{Binding StatusText}" FontSize="10" Margin="15,2,0,0"
+                                                       Foreground="{StaticResource TextDimBrush}"
+                                                       TextTrimming="CharacterEllipsis" />
+                                        </StackPanel>
+                                    </Button>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </Panel>
+                </ScrollViewer>
+
+                <Border Grid.Row="2" Margin="0,6,0,0" Padding="6" CornerRadius="6"
+                        Background="{StaticResource InputBrush}"
+                        IsVisible="{Binding IsLogVisible}">
+                    <DockPanel>
+                        <TextBlock DockPanel.Dock="Top" Text="{Binding LogTitle}" FontSize="10"
+                                   Foreground="{StaticResource TextDimBrush}" Margin="0,0,0,4" />
+                        <ListBox Classes="log" ItemsSource="{Binding LogLines}" MaxHeight="150"
+                                 ScrollViewer.HorizontalScrollBarVisibility="Auto" />
+                    </DockPanel>
+                </Border>
+
+                <TextBlock Grid.Row="3" Text="{Binding StatusLine}" FontSize="10" Margin="2,6,18,0"
+                           Foreground="{StaticResource TextDimBrush}" TextTrimming="CharacterEllipsis" />
+            </Grid>
+
+            <!-- Resize grip: the frameless window has no native border to drag. -->
+            <Border x:Name="ResizeGrip" Width="14" Height="14" Margin="0,0,3,3"
+                    HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                    Background="Transparent" Cursor="BottomRightCorner"
+                    PointerPressed="OnGripPressed" PointerMoved="OnGripMoved"
+                    PointerReleased="OnGripReleased" PointerCaptureLost="OnGripCaptureLost">
+                <Path Data="M 12,3 L 3,12 M 12,7 L 7,12 M 12,11 L 11,12"
+                      Stroke="{StaticResource TextDimBrush}" StrokeThickness="1" />
+            </Border>
+        </Panel>
+    </Border>
+</Window>

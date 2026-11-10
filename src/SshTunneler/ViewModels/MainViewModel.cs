@@ -1,6 +1,5 @@
 using System.Collections.ObjectModel;
-using System.Windows;
-using System.Windows.Threading;
+using Avalonia.Threading;
 using SshTunneler.Models;
 using SshTunneler.Services;
 
@@ -9,16 +8,18 @@ namespace SshTunneler.ViewModels;
 public sealed class MainViewModel : ObservableObject
 {
     private readonly IConfigStore _store;
+    private readonly Func<string, Task> _copyToClipboard;
     private readonly DispatcherTimer _logTimer;
     private ResourceItemViewModel? _logSource;
     private string _statusLine = "";
     private bool _isLogVisible;
 
-    public MainViewModel(AppConfig config, IConfigStore store, TunnelManager tunnels)
+    public MainViewModel(AppConfig config, IConfigStore store, TunnelManager tunnels, Func<string, Task> copyToClipboard)
     {
         Config = config;
         _store = store;
         Tunnels = tunnels;
+        _copyToClipboard = copyToClipboard;
 
         Tunnels.StatusChanged += OnStatusChanged;
 
@@ -155,12 +156,12 @@ public sealed class MainViewModel : ObservableObject
         }
     }
 
-    public void CopyUrl(ResourceItemViewModel item)
+    public async Task CopyUrlAsync(ResourceItemViewModel item)
     {
         var port = item.Status.LocalPort > 0 ? item.Status.LocalPort : item.Resource.LocalPort;
         try
         {
-            Clipboard.SetText(BrowserLauncher.BuildUrl(item.Resource, port));
+            await _copyToClipboard(BrowserLauncher.BuildUrl(item.Resource, port));
             StatusLine = "URL скопирован";
         }
         catch (Exception ex)
@@ -202,10 +203,7 @@ public sealed class MainViewModel : ObservableObject
 
     private void OnStatusChanged(object? sender, TunnelStatus status)
     {
-        var dispatcher = Application.Current?.Dispatcher;
-        if (dispatcher is null) return;
-
-        dispatcher.BeginInvoke(() =>
+        Dispatcher.UIThread.Post(() =>
         {
             var item = Items.FirstOrDefault(i => i.Id == status.ResourceId);
             if (item is null) return;

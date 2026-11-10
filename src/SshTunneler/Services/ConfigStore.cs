@@ -1,6 +1,4 @@
 using System.IO;
-using System.Security.Cryptography;
-using System.Text;
 using System.Text.Json;
 using SshTunneler.Models;
 
@@ -23,16 +21,12 @@ public interface IConfigStore
 }
 
 /// <summary>
-/// Stores the whole configuration as a single JSON blob encrypted with Windows DPAPI
-/// (CurrentUser scope), so only the current Windows account can read it back.
+/// Stores the whole configuration as a single JSON blob encrypted for the current user:
+/// Windows DPAPI on Windows, an AES key kept in the login keychain on macOS.
 /// </summary>
-public sealed class DpapiJsonConfigStore : IConfigStore
+public sealed class EncryptedJsonConfigStore : IConfigStore
 {
     public const string BackupSuffix = ".bak";
-
-    // Extra entropy so the blob cannot be decrypted by another app just by calling Unprotect.
-    private static readonly byte[] Entropy =
-        Encoding.UTF8.GetBytes("SshTunneler.v1.config.entropy");
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -40,21 +34,41 @@ public sealed class DpapiJsonConfigStore : IConfigStore
         DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull
     };
 
-    public DpapiJsonConfigStore(string? path = null)
+    private readonly IConfigProtector _protector;
+
+    public EncryptedJsonConfigStore(IConfigProtector protector, string? path = null)
     {
+        _protector = protector;
         Path = path ?? DefaultPath;
 
         // A relative path would be resolved against the working directory, which for anything
-        // explorer.exe starts is C:\Windows\System32 — settings would silently read and write
-        // somewhere nobody expects.
+        // explorer.exe starts is C:\Windows\System32 and for launchd is / — settings would
+        // silently read and write somewhere nobody expects.
         if (!System.IO.Path.IsPathFullyQualified(Path))
             throw new ArgumentException($"Путь к файлу настроек должен быть абсолютным: '{Path}'.", nameof(path));
     }
 
     public string Path { get; }
 
+    /// <summary>The store the app uses: default location, protector of the current OS.</summary>
+    public static EncryptedJsonConfigStore CreateDefault() => new(ConfigProtectors.ForCurrentPlatform());
+
     public static string DefaultPath =>
-        System.IO.Path.Combine(RoamingAppDataDirectory(), "SshTunneler", "config.dat");
+        System.IO.Path.Combine(UserDataDirectory(), "SshTunneler", "config.dat");
+
+    /// <summary>Per-user settings folder: roaming AppData on Windows, Application Support on macOS.</summary>
+    public static string UserDataDirectory()
+    {
+        if (OperatingSystem.IsWindows()) return RoamingAppDataDirectory();
+
+        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        if (OperatingSystem.IsMacOS())
+            return System.IO.Path.Combine(home, "Library", "Application Support");
+
+        return Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData) is { Length: > 0 } config
+            ? config
+            : System.IO.Path.Combine(home, ".config");
+    }
 
     /// <summary>
     /// Roaming AppData, resolved without trusting a single lookup. For
@@ -109,10 +123,7 @@ public sealed class DpapiJsonConfigStore : IConfigStore
             throw new ConfigLoadException(
                 $"Не удалось прочитать файл настроек: {primary.Error.Message}", null, primary.Error);
 
-        throw new ConfigLoadException(
-            "Файл настроек не читается: он повреждён или создан под другой учётной записью Windows.",
-            Quarantine(),
-            primary.Error);
+        throw new ConfigLoadException(UnreadableMessage, Quarantine(), primary.Error);
     }
 
     public void Save(AppConfig config)
@@ -121,7 +132,7 @@ public sealed class DpapiJsonConfigStore : IConfigStore
         if (!string.IsNullOrEmpty(directory)) Directory.CreateDirectory(directory);
 
         var json = JsonSerializer.SerializeToUtf8Bytes(config, JsonOptions);
-        var encrypted = ProtectedData.Protect(json, Entropy, DataProtectionScope.CurrentUser);
+        var encrypted = _protector.Protect(json);
 
         // Atomic-ish write: full file first, then swap in, keeping the previous copy as .bak.
         var temp = Path + ".tmp";
@@ -133,11 +144,37 @@ public sealed class DpapiJsonConfigStore : IConfigStore
     }
 
     /// <summary>
+    /// Moves the settings file and its backup aside under a dated name. Used when the file is
+    /// in place but cannot be read right now (keychain locked, access denied): the app then runs
+    /// on an empty configuration, and its saves must not overwrite what could not be read.
+    /// Returns the new path of the main file, or null when the files could not be moved.
+    /// </summary>
+    public string? SetAside()
+    {
+        var target = $"{Path}.unreadable-{DateTime.Now:yyyyMMdd-HHmmss}";
+        try
+        {
+            if (File.Exists(Path + BackupSuffix)) File.Move(Path + BackupSuffix, target + BackupSuffix);
+            if (File.Exists(Path)) File.Move(Path, target);
+            return target;
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+    }
+
+    private static string UnreadableMessage => OperatingSystem.IsWindows()
+        ? "Файл настроек не читается: он повреждён или создан под другой учётной записью Windows."
+        : "Файл настроек не читается: он повреждён или его ключ шифрования отсутствует в связке ключей.";
+
+    /// <summary>
     /// Reads one candidate file. A missing or empty file is not an error, it just has nothing to
     /// offer; <see cref="ReadResult.IsCorrupt"/> separates "could not decrypt it" from
-    /// "could not even read the bytes", because only the former is worth quarantining.
+    /// "could not even read the bytes or reach the key", because only the former is worth
+    /// quarantining.
     /// </summary>
-    private static ReadResult Read(string path)
+    private ReadResult Read(string path)
     {
         if (!File.Exists(path)) return default;
 
@@ -155,8 +192,13 @@ public sealed class DpapiJsonConfigStore : IConfigStore
 
         try
         {
-            var json = ProtectedData.Unprotect(encrypted, Entropy, DataProtectionScope.CurrentUser);
+            var json = _protector.Unprotect(encrypted);
             return new ReadResult(JsonSerializer.Deserialize<AppConfig>(json, JsonOptions) ?? new AppConfig(), null, false);
+        }
+        catch (ConfigKeyUnavailableException ex)
+        {
+            // The keychain said no or is locked: the file may be perfectly fine.
+            return new ReadResult(null, ex, IsCorrupt: false);
         }
         catch (Exception ex)
         {

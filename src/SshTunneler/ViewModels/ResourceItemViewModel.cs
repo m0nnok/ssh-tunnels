@@ -1,6 +1,5 @@
-using Brush = System.Windows.Media.Brush;
-using Color = System.Windows.Media.Color;
-using SolidColorBrush = System.Windows.Media.SolidColorBrush;
+using Avalonia.Media;
+using Avalonia.Media.Immutable;
 using SshTunneler.Models;
 using SshTunneler.Services;
 
@@ -9,10 +8,10 @@ namespace SshTunneler.ViewModels;
 /// <summary>One button in the main window: a resource plus the live state of its tunnel.</summary>
 public sealed class ResourceItemViewModel : ObservableObject
 {
-    private static readonly Brush IdleBrush = Freeze(Color.FromRgb(0x6B, 0x6B, 0x75));
-    private static readonly Brush BusyBrush = Freeze(Color.FromRgb(0xE0, 0xA8, 0x30));
-    private static readonly Brush OkBrush = Freeze(Color.FromRgb(0x3F, 0xC4, 0x6B));
-    private static readonly Brush FailBrush = Freeze(Color.FromRgb(0xE0, 0x54, 0x54));
+    private static readonly IBrush IdleBrush = new ImmutableSolidColorBrush(Color.FromRgb(0x6B, 0x6B, 0x75));
+    private static readonly IBrush BusyBrush = new ImmutableSolidColorBrush(Color.FromRgb(0xE0, 0xA8, 0x30));
+    private static readonly IBrush OkBrush = new ImmutableSolidColorBrush(Color.FromRgb(0x3F, 0xC4, 0x6B));
+    private static readonly IBrush FailBrush = new ImmutableSolidColorBrush(Color.FromRgb(0xE0, 0x54, 0x54));
 
     private TunnelStatus _status;
 
@@ -26,7 +25,7 @@ public sealed class ResourceItemViewModel : ObservableObject
         ReconnectCommand = new AsyncRelayCommand(() => owner.ReconnectAsync(this));
         DisconnectCommand = new AsyncRelayCommand(() => owner.DisconnectAsync(this));
         OpenBrowserCommand = new RelayCommand(() => owner.OpenInBrowser(this));
-        CopyUrlCommand = new RelayCommand(() => owner.CopyUrl(this));
+        CopyUrlCommand = new AsyncRelayCommand(() => owner.CopyUrlAsync(this));
         ShowLogCommand = new RelayCommand(() => owner.ShowLog(this));
         EditCommand = new RelayCommand(() => owner.EditResource(this));
     }
@@ -43,7 +42,7 @@ public sealed class ResourceItemViewModel : ObservableObject
     public AsyncRelayCommand ReconnectCommand { get; }
     public AsyncRelayCommand DisconnectCommand { get; }
     public RelayCommand OpenBrowserCommand { get; }
-    public RelayCommand CopyUrlCommand { get; }
+    public AsyncRelayCommand CopyUrlCommand { get; }
     public RelayCommand ShowLogCommand { get; }
     public RelayCommand EditCommand { get; }
 
@@ -66,7 +65,7 @@ public sealed class ResourceItemViewModel : ObservableObject
 
     public bool IsBusy => _status.State is TunnelState.Connecting or TunnelState.Reconnecting;
 
-    public Brush StatusBrush => _status.State switch
+    public IBrush StatusBrush => _status.State switch
     {
         TunnelState.Connected => OkBrush,
         TunnelState.Connecting or TunnelState.Reconnecting => BusyBrush,
@@ -102,12 +101,5 @@ public sealed class ResourceItemViewModel : ObservableObject
         OnPropertyChanged(nameof(Name));
         OnPropertyChanged(nameof(StatusText));
         OnPropertyChanged(nameof(ToolTipText));
-    }
-
-    private static Brush Freeze(Color color)
-    {
-        var brush = new SolidColorBrush(color);
-        brush.Freeze();
-        return brush;
     }
 }

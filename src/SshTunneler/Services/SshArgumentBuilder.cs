@@ -3,22 +3,28 @@ using SshTunneler.Models;
 
 namespace SshTunneler.Services;
 
-/// <summary>Builds ssh.exe command lines. Pure functions, covered by unit tests.</summary>
+/// <summary>Builds ssh command lines. Pure functions, covered by unit tests.</summary>
 public static class SshArgumentBuilder
 {
-    /// <summary>Full path of the OpenSSH client shipped with Windows, or just ssh.exe as a fallback.</summary>
+    /// <summary>
+    /// Full path of the OpenSSH client that ships with the OS, then whatever ssh is on PATH,
+    /// then the bare name as a last resort.
+    /// </summary>
     public static string ResolveSshPath()
     {
-        var system32 = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.System), "OpenSSH", "ssh.exe");
-        if (File.Exists(system32)) return system32;
+        // Apps started from Finder or launchd get a bare PATH, so the system client comes first.
+        var system = OperatingSystem.IsWindows()
+            ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "OpenSSH", "ssh.exe")
+            : "/usr/bin/ssh";
+        if (File.Exists(system)) return system;
 
+        var fileName = OperatingSystem.IsWindows() ? "ssh.exe" : "ssh";
         var pathVar = Environment.GetEnvironmentVariable("PATH") ?? "";
         foreach (var dir in pathVar.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries))
         {
             try
             {
-                var candidate = Path.Combine(dir.Trim(), "ssh.exe");
+                var candidate = Path.Combine(dir.Trim(), fileName);
                 if (File.Exists(candidate)) return candidate;
             }
             catch (ArgumentException)
@@ -27,7 +33,7 @@ public static class SshArgumentBuilder
             }
         }
 
-        return "ssh.exe";
+        return fileName;
     }
 
     /// <summary>Arguments for a background port forward: ssh -N -L local:remote target.</summary>

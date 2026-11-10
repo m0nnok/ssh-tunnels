@@ -1,0 +1,165 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:SshTunneler.ViewModels"
+        xmlns:m="using:SshTunneler.Models"
+        xmlns:views="using:SshTunneler.Views"
+        x:Class="SshTunneler.Views.SettingsWindow"
+        x:DataType="vm:SettingsViewModel"
+        Title="SSH Tunneler — настройки"
+        Width="720" Height="560" MinWidth="640" MinHeight="460"
+        KeyDown="OnKeyDown">
+
+    <Window.Resources>
+        <views:AuthMethodNameConverter x:Key="AuthMethodName" />
+    </Window.Resources>
+
+    <Grid Margin="12" RowDefinitions="*,Auto">
+        <TabControl x:Name="Tabs" Grid.Row="0">
+            <TabItem Header="Серверы">
+                <Grid Margin="0,10,0,0" ColumnDefinitions="200,*">
+                    <DockPanel Grid.Column="0" Margin="0,0,10,0">
+                        <StackPanel DockPanel.Dock="Bottom" Margin="0,6,0,0">
+                            <StackPanel Orientation="Horizontal">
+                                <Button Classes="dialog" Content="Добавить" Command="{Binding AddServerCommand}" />
+                                <Button Classes="dialog" Content="Удалить" Command="{Binding DeleteServerCommand}" />
+                            </StackPanel>
+                            <Button Classes="dialog" Content="Проверить подключение" Margin="0,6,0,0"
+                                    Command="{Binding TestConnectionCommand}" />
+                            <TextBlock Text="{Binding TestResult}" TextWrapping="Wrap" FontSize="11"
+                                       Margin="0,6,0,0" Foreground="{StaticResource TextDimBrush}" />
+                        </StackPanel>
+                        <ListBox ItemsSource="{Binding Servers}" SelectedItem="{Binding SelectedServer}"
+                                 DisplayMemberBinding="{ReflectionBinding Name}" />
+                    </DockPanel>
+
+                    <ScrollViewer Grid.Column="1" VerticalScrollBarVisibility="Auto"
+                                  IsEnabled="{Binding SelectedServer, Converter={x:Static ObjectConverters.IsNotNull}}">
+                        <!-- The panel switches the data context; the editor below is typed for it. -->
+                        <Panel DataContext="{Binding SelectedServer}">
+                            <StackPanel x:DataType="m:SshServer" Margin="0,0,14,0">
+                                <Label Content="Название" />
+                                <TextBox Text="{Binding Name}" />
+                                <Label Content="Хост (или Host-алиас из ssh config)" />
+                                <TextBox Text="{Binding Host}" />
+                                <Label Content="Порт SSH" />
+                                <TextBox Text="{Binding Port}" Width="90" HorizontalAlignment="Left" />
+                                <Label Content="Пользователь" />
+                                <TextBox Text="{Binding User}" />
+                                <Label Content="Аутентификация" />
+                                <ComboBox ItemsSource="{ReflectionBinding DataContext.AuthMethods,
+                                              RelativeSource={RelativeSource AncestorType=Window}}"
+                                          SelectedItem="{Binding AuthMethod}">
+                                    <ComboBox.ItemTemplate>
+                                        <DataTemplate x:DataType="m:AuthMethod">
+                                            <TextBlock Text="{Binding Converter={StaticResource AuthMethodName}}" />
+                                        </DataTemplate>
+                                    </ComboBox.ItemTemplate>
+                                </ComboBox>
+                                <Label Content="Файл приватного ключа" />
+                                <DockPanel>
+                                    <Button DockPanel.Dock="Right" Classes="dialog" Content="Обзор..."
+                                            Margin="6,0,0,6" Click="OnBrowseKey" />
+                                    <TextBox Text="{Binding KeyPath}" />
+                                </DockPanel>
+                                <Label Content="Passphrase / пароль (хранится зашифрованным)" />
+                                <TextBox x:Name="SecretBox" PasswordChar="●" Classes="revealPasswordButton"
+                                         TextChanged="OnSecretChanged" />
+                                <Label Content="Дополнительные опции ssh, например -o ProxyJump=bastion" />
+                                <TextBox Text="{Binding ExtraOptions}" />
+                            </StackPanel>
+                        </Panel>
+                    </ScrollViewer>
+                </Grid>
+            </TabItem>
+
+            <TabItem Header="Ресурсы">
+                <Grid Margin="0,10,0,0" ColumnDefinitions="200,*">
+                    <DockPanel Grid.Column="0" Margin="0,0,10,0">
+                        <StackPanel DockPanel.Dock="Bottom" Margin="0,6,0,0">
+                            <StackPanel Orientation="Horizontal">
+                                <Button Classes="dialog" Content="Добавить" Command="{Binding AddResourceCommand}" />
+                                <Button Classes="dialog" Content="Удалить" Command="{Binding DeleteResourceCommand}" />
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                <Button Classes="dialog" Content="Выше" Command="{Binding MoveResourceUpCommand}" />
+                                <Button Classes="dialog" Content="Ниже" Command="{Binding MoveResourceDownCommand}" />
+                            </StackPanel>
+                        </StackPanel>
+                        <ListBox x:Name="ResourceList" ItemsSource="{Binding Resources}"
+                                 SelectedItem="{Binding SelectedResource}"
+                                 DisplayMemberBinding="{ReflectionBinding Name}" />
+                    </DockPanel>
+
+                    <ScrollViewer Grid.Column="1" VerticalScrollBarVisibility="Auto"
+                                  IsEnabled="{Binding SelectedResource, Converter={x:Static ObjectConverters.IsNotNull}}">
+                        <Panel DataContext="{Binding SelectedResource}">
+                            <StackPanel x:DataType="m:TunnelResource" Margin="0,0,14,0">
+                                <Label Content="Название кнопки" />
+                                <TextBox Text="{Binding Name}" />
+                                <Label Content="Описание" />
+                                <TextBox Text="{Binding Description}" />
+                                <Label Content="Сервер" />
+                                <ComboBox ItemsSource="{ReflectionBinding DataContext.Servers,
+                                              RelativeSource={RelativeSource AncestorType=Window}}"
+                                          SelectedValue="{Binding ServerId}"
+                                          SelectedValueBinding="{ReflectionBinding Id}"
+                                          DisplayMemberBinding="{ReflectionBinding Name}" />
+                                <Label Content="Адрес на сервере (обычно 127.0.0.1)" />
+                                <TextBox Text="{Binding RemoteHost}" />
+                                <Label Content="Порт на сервере" />
+                                <TextBox Text="{Binding RemotePort}" Width="90" HorizontalAlignment="Left" />
+                                <Label Content="Локальный порт (0 — выбрать свободный автоматически)" />
+                                <TextBox Text="{Binding LocalPort}" Width="90" HorizontalAlignment="Left" />
+                                <Label Content="URL: поддерживаются {localPort}, {remotePort}, {remoteHost}" />
+                                <TextBox Text="{Binding UrlTemplate}" />
+                                <CheckBox Content="Открывать в браузере после подключения"
+                                          IsChecked="{Binding AutoOpenBrowser}" />
+                                <CheckBox Content="Подключать при запуске приложения"
+                                          IsChecked="{Binding AutoConnectOnStart}" />
+                            </StackPanel>
+                        </Panel>
+                    </ScrollViewer>
+                </Grid>
+            </TabItem>
+
+            <TabItem Header="Общие">
+                <ScrollViewer Margin="0,10,0,0" VerticalScrollBarVisibility="Auto" DataContext="{Binding Ui}">
+                    <StackPanel x:DataType="m:UiSettings" Margin="0,0,14,0">
+                        <Label Content="Прозрачность окна" />
+                        <DockPanel Margin="0,0,0,6">
+                            <TextBlock DockPanel.Dock="Right" Width="44" TextAlignment="Right"
+                                       VerticalAlignment="Center"
+                                       Text="{Binding Opacity, StringFormat={}{0:P0}}" />
+                            <Slider Minimum="0.35" Maximum="1.0" TickFrequency="0.05" IsSnapToTickEnabled="True"
+                                    Value="{Binding Opacity}" />
+                        </DockPanel>
+                        <CheckBox Content="Поверх всех окон" IsChecked="{Binding Topmost}" />
+                        <CheckBox Content="{x:Static views:PlatformText.AutoStart}"
+                                  IsChecked="{Binding AutoStartWithWindows}" />
+                        <CheckBox Content="{x:Static views:PlatformText.StartMinimized}"
+                                  IsChecked="{Binding StartMinimized}" />
+                        <CheckBox Content="Автоматически переподключать упавшие туннели"
+                                  IsChecked="{Binding AutoReconnect}" />
+                        <Label Content="Диапазон локальных портов для автоподбора" Margin="0,8,0,0" />
+                        <StackPanel Orientation="Horizontal">
+                            <TextBox Text="{Binding LocalPortRangeStart}" Width="90" />
+                            <TextBlock Text=" — " VerticalAlignment="Center" Margin="6,0,6,6" />
+                            <TextBox Text="{Binding LocalPortRangeEnd}" Width="90" />
+                        </StackPanel>
+                        <Label Content="{x:Static views:PlatformText.Browser}" />
+                        <TextBox Text="{Binding BrowserPath}" />
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+        </TabControl>
+
+        <DockPanel Grid.Row="1" Margin="0,10,0,0">
+            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                <Button Classes="dialog" Content="Сохранить" Click="OnSave" />
+                <Button Classes="dialog" Content="Отмена" Click="OnCancel" />
+            </StackPanel>
+            <TextBlock x:Name="ErrorText" Foreground="{StaticResource ErrorBrush}" VerticalAlignment="Center"
+                       TextTrimming="CharacterEllipsis" />
+        </DockPanel>
+    </Grid>
+</Window>

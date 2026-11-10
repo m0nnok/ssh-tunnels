@@ -27,15 +27,11 @@ public static class ConnectionTester
             };
 
             foreach (var arg in SshArgumentBuilder.BuildTestArgs(server)) startInfo.ArgumentList.Add(arg);
-            startInfo.Environment["SSH_ASKPASS"] = Environment.ProcessPath ?? "";
-            startInfo.Environment["SSH_ASKPASS_REQUIRE"] = "force";
-            startInfo.Environment["DISPLAY"] = "localhost:0";
-            startInfo.Environment[AskPassProtocol.PipeEnvVar] = askPass.PipeName;
-            startInfo.Environment[AskPassProtocol.TokenEnvVar] = token;
-            startInfo.Environment[AskPassProtocol.LabelEnvVar] = server.ToString();
+            foreach (var (key, value) in AskPassProtocol.BuildSshEnvironment(askPass.PipeName, token, server.ToString()))
+                startInfo.Environment[key] = value;
 
             using var process = Process.Start(startInfo);
-            if (process is null) return new ConnectionTestResult(false, "Не удалось запустить ssh.exe");
+            if (process is null) return new ConnectionTestResult(false, "Не удалось запустить ssh");
 
             var stderr = new StringBuilder();
             var readTask = Task.Run(async () =>

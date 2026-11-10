@@ -16,7 +16,7 @@ public static class PortAllocator
                 if (listener.Port == port) return false;
             return true;
         }
-        catch (NetworkInformationException)
+        catch (Exception ex) when (ex is NetworkInformationException or PlatformNotSupportedException)
         {
             // Fall back to actually trying to bind.
             return TryBind(port);

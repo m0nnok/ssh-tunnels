@@ -1,0 +1,12 @@
+<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="SshTunneler.App"
+             Name="SSH Tunneler"
+             RequestedThemeVariant="Dark">
+
+    <Application.Styles>
+        <FluentTheme />
+        <StyleInclude Source="avares://SshTunneler/Themes/Dark.axaml" />
+    </Application.Styles>
+
+</Application>

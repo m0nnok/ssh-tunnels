@@ -1,43 +1,54 @@
-using System.Drawing;
-using System.Drawing.Drawing2D;
-using System.Runtime.InteropServices;
+using System.IO;
+using Avalonia;
+using Avalonia.Controls;
+using Avalonia.Media;
+using Avalonia.Media.Imaging;
+using Avalonia.Media.Immutable;
 
 namespace SshTunneler.Services;
 
 /// <summary>Draws the tray icon at runtime so the app ships without binary assets.</summary>
 public static class TrayIconFactory
 {
-    [DllImport("user32.dll", SetLastError = true)]
-    private static extern bool DestroyIcon(IntPtr handle);
+    private static readonly IBrush Background = new ImmutableSolidColorBrush(Color.FromArgb(230, 27, 27, 31));
+    private static readonly IBrush ActiveAccent = new ImmutableSolidColorBrush(Color.FromRgb(63, 196, 107));
+    private static readonly IBrush IdleAccent = new ImmutableSolidColorBrush(Color.FromRgb(130, 130, 140));
 
-    public static Icon Create(bool anyActive)
+    public static WindowIcon Create(bool anyActive)
     {
-        using var bitmap = new Bitmap(32, 32);
-        using (var g = Graphics.FromImage(bitmap))
+        using var bitmap = Draw(anyActive);
+        using var stream = new MemoryStream();
+        bitmap.Save(stream, new PngBitmapEncoderOptions());
+        stream.Position = 0;
+        return new WindowIcon(stream);
+    }
+
+    public static Bitmap Draw(bool anyActive)
+    {
+        // The macOS menu bar shows icons at 18pt, so draw enough pixels for Retina screens.
+        var size = OperatingSystem.IsMacOS() ? 36 : 32;
+
+        var bitmap = new RenderTargetBitmap(new PixelSize(size, size));
+        using (var context = bitmap.CreateDrawingContext())
+        using (context.PushTransform(Matrix.CreateScale(size / 32.0, size / 32.0)))
         {
-            g.SmoothingMode = SmoothingMode.AntiAlias;
-            g.Clear(Color.Transparent);
+            context.DrawEllipse(Background, null, new Rect(1, 1, 30, 30));
 
-            using var background = new SolidBrush(Color.FromArgb(230, 27, 27, 31));
-            g.FillEllipse(background, 1, 1, 30, 30);
-
-            var accent = anyActive ? Color.FromArgb(63, 196, 107) : Color.FromArgb(130, 130, 140);
-            using var pen = new Pen(accent, 3f);
             // A short tunnel: two rails converging into an arch.
-            g.DrawArc(pen, 8, 8, 16, 16, 180, 180);
-            g.DrawLine(pen, 8, 16, 8, 24);
-            g.DrawLine(pen, 24, 16, 24, 24);
+            var pen = new Pen(anyActive ? ActiveAccent : IdleAccent, 3);
+            var arch = new StreamGeometry();
+            using (var geometry = arch.Open())
+            {
+                geometry.BeginFigure(new Point(8, 16), isFilled: false);
+                geometry.ArcTo(new Point(24, 16), new Size(8, 8), 0, isLargeArc: false, SweepDirection.Clockwise);
+                geometry.EndFigure(isClosed: false);
+            }
+
+            context.DrawGeometry(null, pen, arch);
+            context.DrawLine(pen, new Point(8, 16), new Point(8, 24));
+            context.DrawLine(pen, new Point(24, 16), new Point(24, 24));
         }
 
-        var handle = bitmap.GetHicon();
-        try
-        {
-            using var temp = Icon.FromHandle(handle);
-            return (Icon)temp.Clone();
-        }
-        finally
-        {
-            DestroyIcon(handle);
-        }
+        return bitmap;
     }
 }
